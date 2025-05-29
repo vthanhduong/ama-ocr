@@ -1,0 +1,12 @@
+fastapi[standard]
+azure-ai-documentintelligence
+azure-core
+pdfplumber
+pydantic-settings
+ocrmypdf
+sqlalchemy
+pytz
+google-genai
+openai
+pypdf2
+camelot-py[cv]
