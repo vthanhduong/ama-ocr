@@ -24,90 +24,100 @@ class Model(str, Enum):
 document_ocr_router = APIRouter(prefix='/document-ocr', tags=['Document OCR'])
 
 async def google_gemini(document, db):
-    obj = await google_gemini_20_flash(document)
-    converted = response_converter.convertResponse(obj, obj["page_count"])
-    file_name = document.filename
-    file_size = document.size
-    file_extension = '.' + document.filename.split('.')[-1]
-    db_analyzeResult = AnalyzeResult(
-        id=str(uuid.uuid4()),
-        file_name=file_name,
-        file_size=file_size,
-        api_version=settings.API_VERSION,
-        file_extension=file_extension,
-        model="google/gemini-20-flash",
-        output_data=json.dumps(converted, ensure_ascii=False),
-        input_token=obj['input_token'],
-        output_token=obj['output_token'],
-        estimated_cost=obj['input_token'] *  0.0000001 + obj['output_token'] * 0.0000004,
-        created_at = str(datetime.datetime.now()),
-        updated_at = str(datetime.datetime.now())
-    )
-    db.add(db_analyzeResult)
-    db.commit()
-    db.refresh(db_analyzeResult)
-    return {
-        "status_code": 200,
-        "success": "success",
-        "data": db_analyzeResult,
-    }
-
-async def local_extractor(document, db):
-    file_name = document.filename
-    file_size = document.size
-    file_extension = '.' + document.filename.split('.')[-1]
-    obj = await local_extract(document)
-    db_analyzeResult = AnalyzeResult(
-        id=str(uuid.uuid4()),
-        api_version=settings.API_VERSION,
-        file_name=file_name,
-        file_size=file_size,
-        file_extension=file_extension,
-        model="ama/local-extractor",
-        output_data=json.dumps(obj, ensure_ascii=False),
-        input_token= 0,
-        output_token= 0,
-        estimated_cost=0.0,
-        created_at = datetime.datetime.now(),
-        updated_at = datetime.datetime.now()
-    )
-    db.add(db_analyzeResult)
-    db.commit()
-    db.refresh(db_analyzeResult)
-    return {
+    try:
+        obj = await google_gemini_20_flash(document)
+        converted = response_converter.convertResponse(obj, obj["page_count"])
+        file_name = document.filename
+        file_size = document.size
+        file_extension = '.' + document.filename.split('.')[-1]
+        db_analyzeResult = AnalyzeResult(
+            id=str(uuid.uuid4()),
+            file_name=file_name,
+            file_size=file_size,
+            api_version=settings.API_VERSION,
+            file_extension=file_extension,
+            model="google/gemini-20-flash",
+            output_data=json.dumps(converted, ensure_ascii=False),
+            input_token=obj['input_token'],
+            output_token=obj['output_token'],
+            estimated_cost=obj['input_token'] *  0.0000001 + obj['output_token'] * 0.0000004,
+            created_at = str(datetime.datetime.now()),
+            updated_at = str(datetime.datetime.now())
+        )
+        db.add(db_analyzeResult)
+        db.commit()
+        db.refresh(db_analyzeResult)
+        return {
             "status_code": 200,
             "success": "success",
             "data": db_analyzeResult,
-    }
+        }
+    except Exception as e:
+        print(str(e))
+
+async def local_extractor(document, db):
+    try:
+        file_name = document.filename
+        file_size = document.size
+        file_extension = '.' + document.filename.split('.')[-1]
+        obj = await local_extract(document)
+        db_analyzeResult = AnalyzeResult(
+            id=str(uuid.uuid4()),
+            api_version=settings.API_VERSION,
+            file_name=file_name,
+            file_size=file_size,
+            file_extension=file_extension,
+            model="ama/local-extractor",
+            output_data=json.dumps(obj, ensure_ascii=False),
+            input_token= 0,
+            output_token= 0,
+            estimated_cost=0.0,
+            created_at = str(datetime.datetime.now()),
+            updated_at = str(datetime.datetime.now())
+        )
+        db.add(db_analyzeResult)
+        db.commit()
+        db.refresh(db_analyzeResult)
+        return {
+                "status_code": 200,
+                "success": "success",
+                "data": db_analyzeResult,
+        }
+    except Exception as e:
+        print(str(e))
 
 async def openai_o4_mini_ocr(document, db):
-    response = await o4_mini_doc_analyze(document)
-    file_name = document.filename
-    file_size = document.size
-    file_extension = '.' + document.filename.split('.')[-1]
-    db_analyzeResult = AnalyzeResult(
-        id=str(uuid.uuid4()),
-        file_name=file_name,
-        file_size=file_size,
-        file_extension=file_extension,
-        model="openai/o4-mini",
-        output_data=json.dumps(response, ensure_ascii=False),
-        input_token=response.usage.input_tokens,
-        output_token=response.usage.output_tokens,
-        estimated_cost=(0.0000011 * response.usage.input_tokens) + (0.0000044 * response.usage.output_tokens),
-        created_at = datetime.datetime.now(utc_plus_7),
-        updated_at = datetime.datetime.now(utc_plus_7)
-    )
-    db.add(db_analyzeResult)
-    db.commit()
-    db.refresh(db_analyzeResult)
-    return {
-        "status_code": 200,
-        "success": "success",
-        "data": db_analyzeResult,
-    }
+    try:
+        response = await o4_mini_doc_analyze(document)
+        file_name = document.filename
+        file_size = document.size
+        file_extension = '.' + document.filename.split('.')[-1]
+        db_analyzeResult = AnalyzeResult(
+            id=str(uuid.uuid4()),
+            file_name=file_name,
+            file_size=file_size,
+            file_extension=file_extension,
+            model="openai/o4-mini",
+            output_data=json.dumps(response, ensure_ascii=False),
+            input_token=response["input_token"],
+            output_token=response["output_token"],
+            estimated_cost=(0.0000011 * response["input_token"]) + (0.0000044 * response["output_token"]),
+            created_at = str(datetime.datetime.now()),
+            updated_at = str(datetime.datetime.now())
+        )
+        db.add(db_analyzeResult)
+        db.commit()
+        db.refresh(db_analyzeResult)
+        return {
+            "status_code": 200,
+            "success": "success",
+            "data": db_analyzeResult,
+        }
+    except Exception as e:
+        print(str(e))
 
 async def azure_prebuilt_read_ocr(document, db):
+    try:
         response = await azure_doc_read_analyze(document)
         file_name = document.filename
         file_size = document.size
@@ -122,8 +132,8 @@ async def azure_prebuilt_read_ocr(document, db):
             input_token=0,
             output_token=0,
             estimated_cost=(1.5/1000) * response["pageCount"],
-            created_at = datetime.datetime.now(utc_plus_7),
-            updated_at = datetime.datetime.now(utc_plus_7)
+            created_at = str(datetime.datetime.now()),
+            updated_at = str(datetime.datetime.now())
         )
         db.add(db_analyzeResult)
         db.commit()
@@ -133,6 +143,8 @@ async def azure_prebuilt_read_ocr(document, db):
             "success": "success",
             "data": db_analyzeResult
         }
+    except Exception as e:
+        print(str(e))
 
 @document_ocr_router.get("/")
 async def get_all_analyze_result(db: Session = Depends(get_db)):

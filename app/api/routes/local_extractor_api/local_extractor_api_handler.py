@@ -19,25 +19,28 @@ async def local_extract(document):
                     break
             page_count = len(pdf.pages)
         if is_scanned:
-            pdf_stream = preprocessed_pdf["flattened_pdf"]
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as input_file:
-                input_file.write(pdf_stream.getvalue())
-                input_path = input_file.name
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as output_file:
-                output_path = output_file.name
-            ocrmypdf.ocr(
-                input_path,
-                output_path,
-                lang="vie",
-                force_ocr=True,
-                progress_bar=True
-            )
-            with open(output_path, "rb") as f:
-                pdf_stream = io.BytesIO(f.read())
+            try:
+                pdf_stream = preprocessed_pdf["flattened_pdf"]
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as input_file:
+                    input_file.write(pdf_stream.getvalue())
+                    input_path = input_file.name
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as output_file:
+                    output_path = output_file.name
+                ocrmypdf.ocr(
+                    input_path,
+                    output_path,
+                    lang="vie",
+                    force_ocr=True,
+                    progress_bar=True
+                )
+                with open(output_path, "rb") as f:
+                    pdf_stream = io.BytesIO(f.read())
+            finally:
+                os.remove(input_path)
+                os.remove(output_path)
         full_content = ""
         paragraphs = []
         tempTable = []
-        rtables = tempTable
         with pdfplumber.open(pdf_stream) as pdf:
             for page in pdf.pages:
                 text = page.extract_text()
@@ -48,11 +51,11 @@ async def local_extract(document):
                     print(f"Page {i+1}: Text extracted")
                     full_content = full_content + text + "\n"
                     paragraphs.append(text + "\n")
-                    print(full_content)
                 else:
                     print(f"Page {i+1}: Cannot extract text")
             page_count = len(pdf.pages)
-        if len(rtables) == 0:
+        rtables = tempTable
+        if is_scanned:
             ctables = camelot.read_pdf(pdf_stream, pages="1-end", flavor="stream")
             for table in ctables:
                 df = table.df
@@ -72,6 +75,3 @@ async def local_extract(document):
         return obj
     except Exception as e:
         print(str(e))
-    finally:
-        os.remove(input_path)
-        os.remove(output_path)

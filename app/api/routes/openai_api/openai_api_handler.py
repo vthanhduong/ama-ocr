@@ -1,12 +1,16 @@
 import openai
-from app.core.config import settings
 import json
+from app.core.config import settings
+from app.core.util.pdf_util import preprocess
 
 openai.api_key = settings.OPENAI_API_KEY
 
 async def o4_mini_doc_analyze(document):
+    preprocessed_pdf = await preprocess(document)
+    original = preprocessed_pdf["original_pdf"]
+    original.seek(0)
     file = openai.files.create(
-            file=(document.filename, document.file),
+            file=(document.filename + '.pdf', original),
             purpose="user_data"
         )
     response = openai.responses.create(
@@ -26,15 +30,14 @@ async def o4_mini_doc_analyze(document):
                     ]
                 }
             ],
-        text_format={
-            "type": "json_object"
-        }    
     )
     obj = json.loads(response.output_text)
     output_response = {
         "full_content": "",
         "paragraphs": obj["paragraphs"],
-        "tables": obj["tables"]
+        "tables": obj["tables"],
+        "input_token": response.usage.input_tokens,
+        "output_token": response.usage.output_tokens,
     }
     for paragraph in obj["paragraphs"]:
         output_response["full_content"] += paragraph + "\n"
