@@ -5,7 +5,9 @@ from app.core.config import settings
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 from app.database.connector import get_db
+from app.core.util.datetime_util import utc_plus_7
 import json
+import datetime
 from enum import Enum
 from app.core.util import response_converter
 from app.api.routes.google_api.google_ai_api_handler import google_gemini_20_flash
@@ -23,7 +25,7 @@ document_ocr_router = APIRouter(prefix='/document-ocr', tags=['Document OCR'])
 
 async def google_gemini(document, db):
     obj = await google_gemini_20_flash(document)
-    converted = response_converter.convertResponse(obj, 0)
+    converted = response_converter.convertResponse(obj, obj["page_count"])
     file_name = document.filename
     file_size = document.size
     file_extension = '.' + document.filename.split('.')[-1]
@@ -37,7 +39,9 @@ async def google_gemini(document, db):
         output_data=json.dumps(converted, ensure_ascii=False),
         input_token=obj['input_token'],
         output_token=obj['output_token'],
-        estimated_cost=obj['input_token'] *  0.0000001 + obj['output_token'] * 0.0000004
+        estimated_cost=obj['input_token'] *  0.0000001 + obj['output_token'] * 0.0000004,
+        created_at = str(datetime.datetime.now()),
+        updated_at = str(datetime.datetime.now())
     )
     db.add(db_analyzeResult)
     db.commit()
@@ -52,7 +56,7 @@ async def local_extractor(document, db):
     file_name = document.filename
     file_size = document.size
     file_extension = '.' + document.filename.split('.')[-1]
-    obj = local_extract(document)
+    obj = await local_extract(document)
     db_analyzeResult = AnalyzeResult(
         id=str(uuid.uuid4()),
         api_version=settings.API_VERSION,
@@ -63,7 +67,9 @@ async def local_extractor(document, db):
         output_data=json.dumps(obj, ensure_ascii=False),
         input_token= 0,
         output_token= 0,
-        estimated_cost=0.0
+        estimated_cost=0.0,
+        created_at = datetime.datetime.now(),
+        updated_at = datetime.datetime.now()
     )
     db.add(db_analyzeResult)
     db.commit()
@@ -88,7 +94,9 @@ async def openai_o4_mini_ocr(document, db):
         output_data=json.dumps(response, ensure_ascii=False),
         input_token=response.usage.input_tokens,
         output_token=response.usage.output_tokens,
-        estimated_cost=(0.0000011 * response.usage.input_tokens) + (0.0000044 * response.usage.output_tokens)
+        estimated_cost=(0.0000011 * response.usage.input_tokens) + (0.0000044 * response.usage.output_tokens),
+        created_at = datetime.datetime.now(utc_plus_7),
+        updated_at = datetime.datetime.now(utc_plus_7)
     )
     db.add(db_analyzeResult)
     db.commit()
@@ -113,7 +121,9 @@ async def azure_prebuilt_read_ocr(document, db):
             output_data=json.dumps(response, ensure_ascii=False),
             input_token=0,
             output_token=0,
-            estimated_cost=(1.5/1000) * response["pageCount"]
+            estimated_cost=(1.5/1000) * response["pageCount"],
+            created_at = datetime.datetime.now(utc_plus_7),
+            updated_at = datetime.datetime.now(utc_plus_7)
         )
         db.add(db_analyzeResult)
         db.commit()
@@ -194,7 +204,6 @@ async def analyze_document(model: Model = Query(..., description="Chooose a mode
     """
     Analyze document
     """
-    print(model)
     try:
         if model == 'openai/o4-mini':
             return await openai_o4_mini_ocr(document, db)
@@ -205,9 +214,9 @@ async def analyze_document(model: Model = Query(..., description="Chooose a mode
         elif model == 'ama/local-extractor':
             return await local_extractor(document, db)
         return {
-                "status_code": 404,
-                "success": "success",
-                "message": "Model not found"
-            }
+            "status_code": 404,
+            "success": False,
+            "message": "Model not found"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

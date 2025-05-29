@@ -1,45 +1,44 @@
-import tempfile
-import shutil
-import os
-from app.core.util.pdf_util import convert_to_pdf
-from app.core.util.pdf_ocr import convert_to_textbased_pdf
 import pdfplumber
 import camelot
+import tempfile
+import io
+import os
+import ocrmypdf
+from app.core.util.pdf_util import preprocess
 
-def local_extract(document):
-    temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(document.filename)[-1])
-    temp_dir = tempfile.mkdtemp()
-    temp_pdf_path = ""
+async def local_extract(document):
+    preprocessed_pdf = await preprocess(document)
+    pdf_stream = preprocessed_pdf["original_pdf"]
     page_count = 0
     try:
-        with open(temp_input.name, "wb") as buffer:
-            document.file.seek(0)
-            shutil.copyfileobj(document.file, buffer)
-            ext = os.path.splitext(document.filename)[-1].lower()
-        if ext in [".docx", ".xlsx"]:
-            print(f"Converting {ext} to PDF...")
-            temp_pdf_path = convert_to_pdf(temp_input.name, temp_dir)
-        elif ext == ".pdf":
-            temp_pdf_path = temp_input.name
-        else:
-            return {
-                "status_code": 400,
-                "error": "Unsupported file format. Only PDF, DOCX, and XLSX are supported."
-            }
         is_scanned = True
-        with pdfplumber.open(temp_pdf_path) as pdf:
+        with pdfplumber.open(pdf_stream) as pdf:
             for i, page in enumerate(pdf.pages[:2]):
                 if page.extract_text():
                     is_scanned = False
                     break
             page_count = len(pdf.pages)
         if is_scanned:
-            print("Scanned document found! Bad quality images, trying to extract text...")
-            convert_to_textbased_pdf(temp_pdf_path)
+            pdf_stream = preprocessed_pdf["flattened_pdf"]
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as input_file:
+                input_file.write(pdf_stream.getvalue())
+                input_path = input_file.name
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as output_file:
+                output_path = output_file.name
+            ocrmypdf.ocr(
+                input_path,
+                output_path,
+                lang="vie",
+                force_ocr=True,
+                progress_bar=True
+            )
+            with open(output_path, "rb") as f:
+                pdf_stream = io.BytesIO(f.read())
         full_content = ""
         paragraphs = []
         tempTable = []
-        with pdfplumber.open(temp_pdf_path) as pdf:
+        rtables = tempTable
+        with pdfplumber.open(pdf_stream) as pdf:
             for page in pdf.pages:
                 text = page.extract_text()
                 tables = page.extract_tables()
@@ -53,9 +52,8 @@ def local_extract(document):
                 else:
                     print(f"Page {i+1}: Cannot extract text")
             page_count = len(pdf.pages)
-        rtables = tempTable
         if len(rtables) == 0:
-            ctables = camelot.read_pdf(temp_pdf_path, pages="1-end", flavor="stream")
+            ctables = camelot.read_pdf(pdf_stream, pages="1-end", flavor="stream")
             for table in ctables:
                 df = table.df
                 new_table = []
@@ -72,9 +70,8 @@ def local_extract(document):
             "tables": rtables
         }
         return obj
+    except Exception as e:
+        print(str(e))
     finally:
-        if os.path.exists(temp_input.name):
-            os.remove(temp_input.name)
-        if os.path.exists(temp_pdf_path) and temp_pdf_path != temp_input.name:
-            os.remove(temp_pdf_path)
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        os.remove(input_path)
+        os.remove(output_path)

@@ -1,20 +1,20 @@
 from google import genai
 from google.genai import types
 from app.core.config import settings
-from app.core.util.pdf_util import split_pdf
+from app.core.util.pdf_util import preprocess
 import json
 google_api_key=settings.GOOGLE_GEMINI_API_KEY
 async def google_gemini_20_flash(document):
     client = genai.Client(api_key=google_api_key)
-    print('Document too long, splitting...')
-    pdf_parts = split_pdf(document.file)
-    print('Document splitted, iterating documents...')
+    preprocessed_pdf = await preprocess(document)
+    pdf_parts = preprocessed_pdf["flattened_pdf_parts"]
     responseOutput = {
         "full_content": "",
         "paragraphs": [],
         "tables": [],
         "input_token": 0,
         "output_token": 0,
+        "page_count": preprocessed_pdf["page_count"]
     }
     for pdf in pdf_parts:
         print("Start analyze document part...")
